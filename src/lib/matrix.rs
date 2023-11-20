@@ -1,12 +1,73 @@
 use rand::{thread_rng, Rng};
 use rayon::prelude::*;
-use std::{fmt::{Debug, Formatter, Result}, sync::mpsc};
+use std::{
+    clone, f64,
+    fmt::{Debug, Formatter, Result},
+    sync::mpsc,
+};
 
 #[derive(Clone)]
 pub struct Matrix {
     pub rows: usize,
     pub cols: usize,
     pub data: Vec<Vec<f64>>,
+}
+
+pub struct Matrix_2 {
+    pub data: Vec<f64>,
+    pub rows_size: usize,
+}
+
+impl Matrix_2 {
+    pub fn zeros(rows: usize, cols: usize) -> Matrix_2 {
+        Matrix_2 {
+            data: vec![0.0; rows * cols],
+            rows_size: cols,
+        }
+    }
+
+    pub fn random(rows: usize, cols: usize) -> Matrix_2 {
+        let mut res = Matrix_2::zeros(rows, cols);
+        res.data = res
+            .data
+            .iter()
+            .map(|_| thread_rng().gen::<f64>() * 2.0 - 1.0)
+            .collect();
+
+        res
+    }
+
+    pub fn multiply(&self, other: &Matrix_2) -> Matrix_2 {
+        if self.rows_size != other.data.len() / other.rows_size {
+            panic!("Attempted to multiply by matrix of incorrect dimensions");
+        }
+
+        let mut res: Matrix_2 = Matrix_2::zeros(self.rows_size, other.data.len() / other.rows_size);
+
+        let m = res.data.iter().enumerate().map(|(i, _)| {
+            let tmp = (i / self.rows_size) * self.rows_size;
+
+            (tmp..tmp + self.rows_size)
+                .enumerate()
+                .fold(0.0 as f64, |mut acc, (i2, i3)| {
+                    acc += self.data[i3] * other.data[i % self.rows_size + (i2 * self.rows_size)];
+                    acc
+                })
+        });
+
+        res.data = m.collect();
+        res
+    }
+
+    //pub fn from(data: Vec<f64>) -> Matrix_2 {
+    //    Matrix_2 {
+    //        rows_size: data.len(),
+    //        cols: data[0].len(),
+    //        data,
+    //    };
+
+    //    Matrix_2 { data: data, rows_size: () }
+    //}
 }
 
 impl Matrix {
@@ -47,21 +108,24 @@ impl Matrix {
         struct Matrix_Sender {
             row: usize,
             col: usize,
-            data: f64
+            data: f64,
         }
 
         let mut res = Matrix::zeros(self.rows, other.cols);
-        let (tx,  rx) = mpsc::channel::<Matrix_Sender>();
-         
+        let (tx, rx) = mpsc::channel::<Matrix_Sender>();
 
         (0..self.rows).into_par_iter().for_each(|i| {
             (0..other.cols).into_par_iter().for_each(|j| {
                 (0..self.cols).into_par_iter().for_each(|k| {
-                    tx.send(Matrix_Sender { row: i, col: j, data: self.data[i][k] * other.data[k][j] }).unwrap();
+                    tx.send(Matrix_Sender {
+                        row: i,
+                        col: j,
+                        data: self.data[i][k] * other.data[k][j],
+                    })
+                    .unwrap();
                 })
-                 
             })
-        }); 
+        });
 
         drop(tx);
 
@@ -159,5 +223,34 @@ impl Debug for Matrix {
                 .collect::<Vec<String>>()
                 .join("\n")
         )
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    pub fn matrix_2_multiply() {
+        let mut m1 = Matrix_2::zeros(3, 3);
+        m1.data = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0].to_vec();
+
+        let mut m2 = Matrix_2::zeros(3, 3);
+        m2.data = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0].to_vec();
+
+        let mut res = m1.multiply(&m2);
+
+        let x = std::time::Instant::now();
+
+        for i in 0..1000000 {
+            m1.multiply(&m2);
+        };
+
+        println!("{:?}", x.elapsed());  
+
+        assert_eq!(
+            [30.0, 36.0, 42.0, 66.0, 81.0, 96.0, 102.0, 126.0, 150.0].to_vec(),
+            res.data
+        );
     }
 }
