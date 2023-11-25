@@ -59,15 +59,39 @@ impl Matrix_2 {
         res
     }
 
-    //pub fn from(data: Vec<f64>) -> Matrix_2 {
-    //    Matrix_2 {
-    //        rows_size: data.len(),
-    //        cols: data[0].len(),
-    //        data,
-    //    };
+    pub fn add(&self, other: &Matrix_2) -> Matrix_2 {
+        if self.rows_size != other.data.len() / other.rows_size {
+            panic!("Attempted to add by matrix of incorrect dimensions");
+        }
 
-    //    Matrix_2 { data: data, rows_size: () }
-    //}
+        let mut res: Matrix_2 = Matrix_2::zeros(self.rows_size, other.data.len() / other.rows_size);
+
+        res.data = res
+            .data
+            .iter()
+            .enumerate()
+            .map(|(i, _)| self.data[i] + other.data[i])
+            .collect();
+
+        res
+    }
+
+    pub fn dot_multiply(&self, other: &Matrix_2) -> Matrix_2 {
+        if self.rows_size != other.data.len() / other.rows_size {
+            panic!("Attempted to add by matrix of incorrect dimensions");
+        }
+
+        let mut res: Matrix_2 = Matrix_2::zeros(self.rows_size, other.data.len() / other.rows_size);
+
+        res.data = res
+            .data
+            .iter()
+            .enumerate()
+            .map(|(i, _)| self.data[i] * other.data[i])
+            .collect();
+
+        res
+    }
 }
 
 impl Matrix {
@@ -105,32 +129,17 @@ impl Matrix {
             panic!("Attempted to multiply by matrix of incorrect dimensions");
         }
 
-        struct Matrix_Sender {
-            row: usize,
-            col: usize,
-            data: f64,
-        }
-
         let mut res = Matrix::zeros(self.rows, other.cols);
-        let (tx, rx) = mpsc::channel::<Matrix_Sender>();
 
-        (0..self.rows).into_par_iter().for_each(|i| {
-            (0..other.cols).into_par_iter().for_each(|j| {
-                (0..self.cols).into_par_iter().for_each(|k| {
-                    tx.send(Matrix_Sender {
-                        row: i,
-                        col: j,
-                        data: self.data[i][k] * other.data[k][j],
-                    })
-                    .unwrap();
-                })
-            })
-        });
+        for i in 0..self.rows {
+            for j in 0..other.cols {
+                let mut sum = 0.0;
+                for k in 0..self.cols {
+                    sum += self.data[i][k] * other.data[k][j];
+                }
 
-        drop(tx);
-
-        while let Ok(x) = rx.recv() {
-            res.data[x.row][x.col] += x.data;
+                res.data[i][j] = sum;
+            }
         }
 
         res
@@ -244,13 +253,81 @@ mod test {
 
         for i in 0..1000000 {
             m1.multiply(&m2);
-        };
+        }
 
-        println!("{:?}", x.elapsed());  
+        println!("{:?}", x.elapsed());
 
         assert_eq!(
             [30.0, 36.0, 42.0, 66.0, 81.0, 96.0, 102.0, 126.0, 150.0].to_vec(),
             res.data
         );
+    }
+
+    #[test]
+    pub fn matrix_1_vs_matrix_2_multiply() {
+        let mut m1 = Matrix::zeros(3, 3);
+        m1.data = [
+            [1.0, 2.0, 3.0].to_vec(),
+            [4.0, 5.0, 6.0].to_vec(),
+            [7.0, 8.0, 9.0].to_vec(),
+        ]
+        .to_vec();
+
+        let mut m2 = Matrix::zeros(3, 3);
+        m1.data = [
+            [1.0, 2.0, 3.0].to_vec(),
+            [4.0, 5.0, 6.0].to_vec(),
+            [7.0, 8.0, 9.0].to_vec(),
+        ]
+        .to_vec();
+
+        let mut res = m1.multiply(&m2);
+
+        let x = std::time::Instant::now();
+
+        for i in 0..1000000 {
+            m1.multiply(&m2);
+        }
+
+        println!("Matrix_1_time:{:?}", x.elapsed());
+
+        assert_eq!(
+            [
+                [30.0, 36.0, 42.0].to_vec(),
+                [66.0, 81.0, 96.0].to_vec(),
+                [102.0, 126.0, 150.0].to_vec()
+            ]
+            .to_vec(),
+            res.data
+        );
+    }
+
+    #[test]
+    pub fn matrix_2_add() {
+        let mut m1 = Matrix_2::zeros(3, 3);
+        m1.data = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0].to_vec();
+
+        let mut m2 = Matrix_2::zeros(3, 3);
+        m2.data = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0].to_vec();
+
+        let mut res = m1.add(&m2);
+
+        let x = std::time::Instant::now();
+
+        for i in 0..1000000 {
+            m1.multiply(&m2);
+        }
+
+        println!("{:?}", x.elapsed());
+
+        assert_eq!(
+            res.data,
+            [2.0, 4.0, 6.0, 8.0, 10.0, 12.0, 14.0, 16.0, 18.0].to_vec()
+        )
+    }
+
+    #[test]
+    pub fn matrix_2_dot_multiply() {
+        assert_eq!(1, 1)
     }
 }
