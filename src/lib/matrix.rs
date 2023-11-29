@@ -1,9 +1,8 @@
 use rand::{thread_rng, Rng};
 use rayon::prelude::*;
 use std::{
-    clone, f64,
+    f64,
     fmt::{Debug, Formatter, Result},
-    sync::mpsc,
 };
 
 #[derive(Clone)]
@@ -13,21 +12,29 @@ pub struct Matrix {
     pub data: Vec<Vec<f64>>,
 }
 
-pub struct Matrix_2 {
+#[derive(Clone)]
+pub struct Matrix2 {
     pub data: Vec<f64>,
     pub rows_size: usize,
 }
 
-impl Matrix_2 {
-    pub fn zeros(rows: usize, cols: usize) -> Matrix_2 {
-        Matrix_2 {
+impl Matrix2 {
+    pub fn zeros(rows: usize, cols: usize) -> Matrix2 {
+        Matrix2 {
             data: vec![0.0; rows * cols],
             rows_size: cols,
         }
     }
 
-    pub fn random(rows: usize, cols: usize) -> Matrix_2 {
-        let mut res = Matrix_2::zeros(rows, cols);
+    pub fn from(to_clone: Matrix2) -> Matrix2 {
+        Matrix2 {
+            rows_size: to_clone.rows_size,
+            data: to_clone.data,
+        }
+    }
+
+    pub fn random(rows: usize, cols: usize) -> Matrix2 {
+        let mut res = Matrix2::zeros(rows, cols);
         res.data = res
             .data
             .iter()
@@ -37,12 +44,12 @@ impl Matrix_2 {
         res
     }
 
-    pub fn multiply(&self, other: &Matrix_2) -> Matrix_2 {
+    pub fn multiply(&self, other: &Matrix2) -> Matrix2 {
         if self.rows_size != other.data.len() / other.rows_size {
             panic!("Attempted to multiply by matrix of incorrect dimensions");
         }
 
-        let mut res: Matrix_2 = Matrix_2::zeros(self.rows_size, other.data.len() / other.rows_size);
+        let mut res: Matrix2 = Matrix2::zeros(self.rows_size, other.data.len() / other.rows_size);
 
         let m = res.data.iter().enumerate().map(|(i, _)| {
             let tmp = (i / self.rows_size) * self.rows_size;
@@ -59,12 +66,12 @@ impl Matrix_2 {
         res
     }
 
-    pub fn add(&self, other: &Matrix_2) -> Matrix_2 {
+    pub fn add(&self, other: &Matrix2) -> Matrix2 {
         if self.rows_size != other.data.len() / other.rows_size {
             panic!("Attempted to add by matrix of incorrect dimensions");
         }
 
-        let mut res: Matrix_2 = Matrix_2::zeros(self.rows_size, other.data.len() / other.rows_size);
+        let mut res: Matrix2 = Matrix2::zeros(self.rows_size, other.data.len() / other.rows_size);
 
         res.data = res
             .data
@@ -76,12 +83,29 @@ impl Matrix_2 {
         res
     }
 
-    pub fn dot_multiply(&self, other: &Matrix_2) -> Matrix_2 {
+    pub fn subtract(&self, other: &Matrix2) -> Matrix2 {
         if self.rows_size != other.data.len() / other.rows_size {
             panic!("Attempted to add by matrix of incorrect dimensions");
         }
 
-        let mut res: Matrix_2 = Matrix_2::zeros(self.rows_size, other.data.len() / other.rows_size);
+        let mut res: Matrix2 = Matrix2::zeros(self.rows_size, other.data.len() / other.rows_size);
+
+        res.data = res
+            .data
+            .iter()
+            .enumerate()
+            .map(|(i, _)| self.data[i] - other.data[i])
+            .collect();
+
+        res
+    }
+
+    pub fn dot_multiply(&self, other: &Matrix2) -> Matrix2 {
+        if self.rows_size != other.data.len() / other.rows_size {
+            panic!("Attempted to add by matrix of incorrect dimensions");
+        }
+
+        let mut res: Matrix2 = Matrix2::zeros(self.rows_size, other.data.len() / other.rows_size);
 
         res.data = res
             .data
@@ -91,6 +115,21 @@ impl Matrix_2 {
             .collect();
 
         res
+    }
+
+    pub fn map<F: Fn(f64) -> f64 + Send + Sync>(&self, function: F) -> Matrix2 {
+        Matrix2 {
+            rows_size: self.rows_size,
+            data: self.data.clone().iter().map(|x| function(*x)).collect(),
+        }
+
+        //Matrix_2::from(
+        //    (self.data)
+        //        .clone()
+        //        .into_iter()
+        //        .map(|row| row.into_par_iter().map(|value| function(value)).collect())
+        //        .collect(),
+        //)
     }
 }
 
@@ -241,10 +280,10 @@ mod test {
 
     #[test]
     pub fn matrix_2_multiply() {
-        let mut m1 = Matrix_2::zeros(3, 3);
+        let mut m1 = Matrix2::zeros(3, 3);
         m1.data = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0].to_vec();
 
-        let mut m2 = Matrix_2::zeros(3, 3);
+        let mut m2 = Matrix2::zeros(3, 3);
         m2.data = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0].to_vec();
 
         let mut res = m1.multiply(&m2);
@@ -304,10 +343,10 @@ mod test {
 
     #[test]
     pub fn matrix_2_add() {
-        let mut m1 = Matrix_2::zeros(3, 3);
+        let mut m1 = Matrix2::zeros(3, 3);
         m1.data = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0].to_vec();
 
-        let mut m2 = Matrix_2::zeros(3, 3);
+        let mut m2 = Matrix2::zeros(3, 3);
         m2.data = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0].to_vec();
 
         let mut res = m1.add(&m2);
@@ -329,5 +368,20 @@ mod test {
     #[test]
     pub fn matrix_2_dot_multiply() {
         assert_eq!(1, 1)
+    }
+
+    #[test]
+    pub fn matrix_2_map_test() {
+        let mut m1 = Matrix2 {
+            rows_size: 3,
+            data: [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0].to_vec(),
+        };
+
+        let m2 = m1.map(|x| x + 1.0);
+
+        assert_eq!(
+            m2.data,
+            [2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0].to_vec()
+        )
     }
 }
